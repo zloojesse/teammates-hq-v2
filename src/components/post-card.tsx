@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useOptimistic, useTransition } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,14 +8,22 @@ import { Heart, MessageCircle, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/relative-time"
 import type { posts, users, agents } from "@/db/schema"
+import type { PublicAgent } from "@/lib/agent-auth"
 
-type Author = (typeof users.$inferSelect | typeof agents.$inferSelect) & {
+type Author = (typeof users.$inferSelect | PublicAgent) & {
   emoji?: string | null
   accentColor?: string | null
 }
 
+export type FeedPost = typeof posts.$inferSelect & {
+  author?: Author
+  reactionCount?: number
+  meLiked?: boolean
+  pending?: boolean
+}
+
 interface Props {
-  post: typeof posts.$inferSelect & { author?: Author }
+  post: FeedPost
   me?: typeof users.$inferSelect
   isLast?: boolean
 }
@@ -31,16 +39,25 @@ export function PostCard({ post, me: _me, isLast }: Props) {
   const author = post.author
   const isAgent = post.authorKind === "agent"
   const meta = TYPE_META[post.type] ?? TYPE_META.status
-  const [optimisticLiked, setOptimisticLiked] = useState(false)
+
+  const baseLiked = !!post.meLiked
+  const baseCount = post.reactionCount ?? 0
+  type LikeState = { liked: boolean; count: number }
+  const [{ liked, count }, applyLike] = useOptimistic<LikeState, "toggle">(
+    { liked: baseLiked, count: baseCount },
+    (state) => ({ liked: !state.liked, count: state.count + (state.liked ? -1 : 1) }),
+  )
   const [pending, startTransition] = useTransition()
 
   function toggleLike() {
-    setOptimisticLiked((v) => !v)
+    if (post.pending || !_me) return
+    const willLike = !liked
     startTransition(async () => {
-      await fetch(`/api/posts/${post.id}/reactions`, {
-        method: optimisticLiked ? "DELETE" : "POST",
+      applyLike("toggle")
+      await fetch(`/api/posts/${post.id}/reactions${willLike ? "" : "?emoji=%E2%99%A5"}`, {
+        method: willLike ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emoji: "♥" }),
+        body: willLike ? JSON.stringify({ emoji: "♥" }) : undefined,
       })
     })
   }
@@ -51,10 +68,12 @@ export function PostCard({ post, me: _me, isLast }: Props) {
 
   return (
     <article
+      style={{ viewTransitionName: `post-${post.id}` }}
       className={cn(
         "group relative py-5",
         !isLast && "border-b border-border/50",
         "transition-colors hover:bg-muted/[0.02]",
+        post.pending && "opacity-60",
       )}
     >
       <div className="flex gap-3">
@@ -80,6 +99,9 @@ export function PostCard({ post, me: _me, isLast }: Props) {
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">agent</span>
               )}
               <span className="text-[12px] text-muted-foreground/80">· {formatRelative(post.createdAt)}</span>
+              {post.pending && (
+                <span className="text-[10px] text-muted-foreground/60">· 發送中</span>
+              )}
             </div>
             <Badge variant="outline" className={cn("h-5 shrink-0 px-2 text-[10px] font-medium", meta.tone)}>
               {meta.label}
@@ -109,15 +131,15 @@ export function PostCard({ post, me: _me, isLast }: Props) {
               size="sm"
               className="h-8 rounded-full px-2 text-muted-foreground hover:bg-rose-500/8 hover:text-rose-500"
               onClick={toggleLike}
-              disabled={pending}
+              disabled={pending || post.pending}
             >
               <Heart
                 className={cn(
                   "mr-1 h-[15px] w-[15px] transition-all",
-                  optimisticLiked && "fill-rose-500 text-rose-500 scale-110",
+                  liked && "fill-rose-500 text-rose-500 scale-110",
                 )}
               />
-              <span className="text-[12px] tabular-nums">{optimisticLiked ? 1 : 0}</span>
+              <span className="text-[12px] tabular-nums">{count}</span>
             </Button>
             <Button variant="ghost" size="sm" className="h-8 rounded-full px-2 text-muted-foreground hover:text-foreground">
               <MessageCircle className="mr-1 h-[15px] w-[15px]" />

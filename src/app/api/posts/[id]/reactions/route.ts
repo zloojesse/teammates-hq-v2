@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db"
 import { reactions } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { publish } from "@/lib/realtime"
 import { and, eq } from "drizzle-orm"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -10,6 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const { emoji = "♥" } = (await req.json().catch(() => ({}))) as { emoji?: string }
   await db.insert(reactions).values({ postId: id, reactorId: me.id, reactorKind: "user", emoji }).onConflictDoNothing()
+  publish({ kind: "reaction.new", postId: id, userId: me.id })
   return NextResponse.json({ ok: true })
 }
 
@@ -19,5 +21,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const emoji = new URL(req.url).searchParams.get("emoji") || "♥"
   await db.delete(reactions).where(and(eq(reactions.postId, id), eq(reactions.reactorId, me.id), eq(reactions.emoji, emoji)))
+  publish({ kind: "reaction.delete", postId: id, userId: me.id })
   return NextResponse.json({ ok: true })
 }

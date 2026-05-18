@@ -17,3 +17,11 @@ export async function getAgentFromRequest(req: NextRequest | Request) {
   const [agent] = await db.select().from(agents).where(eq(agents.tokenHash, hash)).limit(1)
   return agent || null
 }
+
+type AgentRow = typeof agents.$inferSelect
+export type PublicAgent = Omit<AgentRow, "tokenHash">
+
+export function publicAgent(a: AgentRow): PublicAgent {
+  const { tokenHash: _tokenHash, ...rest } = a
+  return rest
+}

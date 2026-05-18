@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db"
 import { posts, agents } from "@/db/schema"
 import { getAgentFromRequest } from "@/lib/agent-auth"
+import { publish } from "@/lib/realtime"
 import { eq } from "drizzle-orm"
 
 export async function POST(req: NextRequest) {
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     taskState: body.taskState ?? null,
     parentPostId: body.parentPostId ?? null,
   }).returning()
-  // Update lastActivityAt
   await db.update(agents).set({ lastActivityAt: new Date() }).where(eq(agents.id, agent.id))
+  publish({ kind: "post.new", postId: created.id, authorId: created.authorId, authorKind: "agent" })
   return NextResponse.json({ post: created }, { status: 201 })
 }

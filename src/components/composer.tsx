@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,27 +10,32 @@ import { cn } from "@/lib/utils"
 
 interface Props {
   me?: typeof users.$inferSelect
+  onSubmit?: (body: string) => void
 }
 
-export function Composer({ me }: Props) {
+export function Composer({ me, onSubmit }: Props) {
   const [body, setBody] = useState("")
   const [focused, setFocused] = useState(false)
   const [pending, startTransition] = useTransition()
-  const router = useRouter()
 
-  async function submit() {
-    if (!body.trim()) return
-    const payload = { body: body.trim(), type: "status" as const }
+  function submit() {
+    const trimmed = body.trim()
+    if (!trimmed) return
+    if (onSubmit) {
+      setBody("")
+      setFocused(false)
+      startTransition(() => onSubmit(trimmed))
+      return
+    }
     startTransition(async () => {
       const r = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ body: trimmed, type: "status" }),
       })
       if (r.ok) {
         setBody("")
         setFocused(false)
-        router.refresh()
       }
     })
   }

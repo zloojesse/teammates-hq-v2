@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db"
 import { posts } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { publish } from "@/lib/realtime"
 import { desc } from "drizzle-orm"
 
 export async function GET() {
@@ -23,5 +24,6 @@ export async function POST(req: NextRequest) {
     body: body.body.slice(0, 4000),
     attachments: body.attachments || [],
   }).returning()
+  publish({ kind: "post.new", postId: created.id, authorId: created.authorId, authorKind: "user" })
   return NextResponse.json({ post: created }, { status: 201 })
 }

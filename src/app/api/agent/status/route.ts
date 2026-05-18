@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db"
 import { agents } from "@/db/schema"
-import { getAgentFromRequest } from "@/lib/agent-auth"
+import { getAgentFromRequest, publicAgent } from "@/lib/agent-auth"
+import { publish } from "@/lib/realtime"
 import { eq } from "drizzle-orm"
 
 export async function PATCH(req: NextRequest) {
@@ -13,11 +14,12 @@ export async function PATCH(req: NextRequest) {
   const updates: Record<string, unknown> = { lastActivityAt: new Date() }
   for (const k of allowed) if (body[k] !== undefined) updates[k] = body[k]
   const [updated] = await db.update(agents).set(updates).where(eq(agents.id, agent.id)).returning()
-  return NextResponse.json({ agent: updated })
+  publish({ kind: "agent.status", agentId: updated.id, state: updated.state, task: updated.task })
+  return NextResponse.json({ agent: publicAgent(updated) })
 }
 
 export async function GET(req: NextRequest) {
   const agent = await getAgentFromRequest(req)
   if (!agent) return NextResponse.json({ error: "invalid token" }, { status: 401 })
-  return NextResponse.json({ agent })
+  return NextResponse.json({ agent: publicAgent(agent) })
 }

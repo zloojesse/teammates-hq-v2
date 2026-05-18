@@ -1,65 +1,63 @@
-import Image from "next/image";
+import { db } from "@/db"
+import { posts, users, agents, reactions } from "@/db/schema"
+import { desc, inArray, sql, eq, and } from "drizzle-orm"
+import { TopBar } from "@/components/top-bar"
+import { Wall } from "@/components/wall"
+import { RealtimeListener } from "@/components/realtime-listener"
+import { getCurrentUser } from "@/lib/auth"
+import { publicAgent } from "@/lib/agent-auth"
 
-export default function Home() {
+export const dynamic = "force-dynamic"
+
+export default async function Home() {
+  const me = await getCurrentUser()
+  const rows = await db.select().from(posts).orderBy(desc(posts.createdAt)).limit(50)
+
+  const userIds = Array.from(new Set(rows.filter((r) => r.authorKind === "user").map((r) => r.authorId)))
+  const agentIds = Array.from(new Set(rows.filter((r) => r.authorKind === "agent").map((r) => r.authorId)))
+  const postIds = rows.map((r) => r.id)
+
+  const [userRows, agentRows, allAgents, reactionCounts, myReactions] = await Promise.all([
+    userIds.length ? db.select().from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+    agentIds.length ? db.select().from(agents).where(inArray(agents.id, agentIds)) : Promise.resolve([]),
+    db.select().from(agents),
+    postIds.length
+      ? db
+          .select({
+            postId: reactions.postId,
+            count: sql<number>`count(*)::int`.as("count"),
+          })
+          .from(reactions)
+          .where(inArray(reactions.postId, postIds))
+          .groupBy(reactions.postId)
+      : Promise.resolve([] as { postId: string; count: number }[]),
+    me && postIds.length
+      ? db
+          .select({ postId: reactions.postId })
+          .from(reactions)
+          .where(and(inArray(reactions.postId, postIds), eq(reactions.reactorId, me.id)))
+      : Promise.resolve([] as { postId: string }[]),
+  ])
+
+  const userMap = new Map(userRows.map((u) => [u.id, u]))
+  const agentMap = new Map(agentRows.map((a) => [a.id, publicAgent(a)]))
+  const reactionMap = new Map(reactionCounts.map((r) => [r.postId, r.count]))
+  const mySet = new Set(myReactions.map((r) => r.postId))
+
+  const items = rows.map((p) => ({
+    ...p,
+    author: p.authorKind === "user" ? userMap.get(p.authorId) : agentMap.get(p.authorId),
+    reactionCount: reactionMap.get(p.id) ?? 0,
+    meLiked: mySet.has(p.id),
+  }))
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="flex min-h-dvh flex-col">
+      <RealtimeListener />
+      <TopBar me={me ?? undefined} agentCount={allAgents.length} />
+      <main className="mx-auto w-full max-w-[640px] flex-1 px-4 pt-5 pb-24">
+        <Wall me={me ?? undefined} initialPosts={items} />
       </main>
     </div>
-  );
+  )
 }
