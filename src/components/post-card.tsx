@@ -1,13 +1,15 @@
 "use client"
 
-import { useOptimistic, useTransition } from "react"
+import { useOptimistic, useState, useTransition } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Heart, MessageCircle, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/relative-time"
-import type { posts, users, agents } from "@/db/schema"
+import { CommentThread } from "@/components/comment-thread"
+import type { posts, users } from "@/db/schema"
 import type { PublicAgent } from "@/lib/agent-auth"
 
 type Author = (typeof users.$inferSelect | PublicAgent) & {
@@ -18,6 +20,7 @@ type Author = (typeof users.$inferSelect | PublicAgent) & {
 export type FeedPost = typeof posts.$inferSelect & {
   author?: Author
   reactionCount?: number
+  commentCount?: number
   meLiked?: boolean
   pending?: boolean
 }
@@ -26,6 +29,7 @@ interface Props {
   post: FeedPost
   me?: typeof users.$inferSelect
   isLast?: boolean
+  authorLookup: Map<string, Author>
 }
 
 const TYPE_META: Record<string, { label: string; tone: string }> = {
@@ -35,10 +39,11 @@ const TYPE_META: Record<string, { label: string; tone: string }> = {
   reflection: { label: "反思", tone: "text-violet-500 bg-violet-500/8 border-violet-500/20" },
 }
 
-export function PostCard({ post, me: _me, isLast }: Props) {
+export function PostCard({ post, me: _me, isLast, authorLookup }: Props) {
   const author = post.author
   const isAgent = post.authorKind === "agent"
   const meta = TYPE_META[post.type] ?? TYPE_META.status
+  const [open, setOpen] = useState(false)
 
   const baseLiked = !!post.meLiked
   const baseCount = post.reactionCount ?? 0
@@ -141,14 +146,38 @@ export function PostCard({ post, me: _me, isLast }: Props) {
               />
               <span className="text-[12px] tabular-nums">{count}</span>
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 rounded-full px-2 text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 rounded-full px-2 text-muted-foreground hover:text-foreground",
+                open && "text-foreground bg-muted/40",
+              )}
+              onClick={() => setOpen((v) => !v)}
+              disabled={post.pending}
+            >
               <MessageCircle className="mr-1 h-[15px] w-[15px]" />
-              <span className="text-[12px] tabular-nums">0</span>
+              <span className="text-[12px] tabular-nums">{post.commentCount ?? 0}</span>
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
               <MoreHorizontal className="h-[15px] w-[15px]" />
             </Button>
           </div>
+
+          <AnimatePresence initial={false}>
+            {open && !post.pending && (
+              <motion.div
+                key="thread"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                style={{ overflow: "hidden" }}
+              >
+                <CommentThread postId={post.id} me={_me} authorLookup={authorLookup} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </article>

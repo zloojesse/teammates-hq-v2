@@ -1,20 +1,26 @@
 "use client"
 
-import { useOptimistic, useTransition, useRef, useCallback } from "react"
+import { useOptimistic, useTransition, useRef, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import { Composer } from "@/components/composer"
 import { PostCard, type FeedPost } from "@/components/post-card"
 import type { users } from "@/db/schema"
+import type { PublicAgent } from "@/lib/agent-auth"
 
 type Me = typeof users.$inferSelect
+type FeedAuthor = (typeof users.$inferSelect | PublicAgent) & {
+  emoji?: string | null
+  accentColor?: string | null
+}
 
 interface Props {
   me?: Me
   initialPosts: FeedPost[]
+  knownAuthors: FeedAuthor[]
 }
 
-export function Wall({ me, initialPosts }: Props) {
+export function Wall({ me, initialPosts, knownAuthors }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [optimistic, addOptimistic] = useOptimistic<FeedPost[], FeedPost>(
@@ -22,6 +28,12 @@ export function Wall({ me, initialPosts }: Props) {
     (state, next) => [next, ...state.filter((p) => p.id !== next.id)],
   )
   const tempCounter = useRef(0)
+  const authorLookup = useMemo(() => {
+    const m = new Map<string, FeedAuthor>()
+    for (const a of knownAuthors) m.set(a.id, a)
+    if (me) m.set(me.id, me)
+    return m
+  }, [knownAuthors, me])
 
   const onSubmit = useCallback(
     (body: string) => {
@@ -87,7 +99,7 @@ export function Wall({ me, initialPosts }: Props) {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
               >
-                <PostCard post={p} me={me} isLast={idx === optimistic.length - 1} />
+                <PostCard post={p} me={me} isLast={idx === optimistic.length - 1} authorLookup={authorLookup} />
               </motion.div>
             ))}
           </AnimatePresence>
