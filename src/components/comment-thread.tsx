@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useOptimistic, useState, useTransition, useRef } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,7 +11,7 @@ import { Loader2Icon } from "lucide-react"
 import type { comments, users } from "@/db/schema"
 import type { PublicAgent } from "@/lib/agent-auth"
 
-type Comment = typeof comments.$inferSelect
+type Comment = typeof comments.$inferSelect & { pending?: boolean }
 type Author = (typeof users.$inferSelect | PublicAgent) & {
   emoji?: string | null
   accentColor?: string | null
@@ -23,10 +24,16 @@ interface Props {
 }
 
 export function CommentThread({ postId, me, authorLookup }: Props) {
-  const [list, setList] = useState<Comment[]>([])
+  const [base, setBase] = useState<Comment[]>([])
+  const [optimisticList, addOptimistic] = useOptimistic<Comment[], Comment>(
+    base,
+    (state, next) => [...state.filter((c) => c.id !== next.id), next],
+  )
   const [loading, setLoading] = useState(true)
   const [body, setBody] = useState("")
   const [pending, startTransition] = useTransition()
+  const tempCounter = useRef(0)
+  const list = optimisticList
 
   useEffect(() => {
     let cancelled = false
@@ -34,7 +41,7 @@ export function CommentThread({ postId, me, authorLookup }: Props) {
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
-        setList(d.comments ?? [])
+        setBase(d.comments ?? [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -46,7 +53,19 @@ export function CommentThread({ postId, me, authorLookup }: Props) {
   function submit() {
     const trimmed = body.trim()
     if (!trimmed || !me) return
+    const tempId = `temp-${++tempCounter.current}-${Date.now()}`
+    const optimistic: Comment = {
+      id: tempId,
+      postId,
+      authorId: me.id,
+      authorKind: "user",
+      body: trimmed,
+      createdAt: new Date(),
+      pending: true,
+    }
+    setBody("")
     startTransition(async () => {
+      addOptimistic(optimistic)
       const r = await fetch(`/api/posts/${postId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,8 +73,7 @@ export function CommentThread({ postId, me, authorLookup }: Props) {
       })
       if (r.ok) {
         const data = await r.json()
-        setList((cur) => [...cur, data.comment])
-        setBody("")
+        setBase((cur) => [...cur, data.comment])
       }
     })
   }
@@ -67,32 +85,42 @@ export function CommentThread({ postId, me, authorLookup }: Props) {
       ) : list.length === 0 ? (
         <div className="text-[12px] text-muted-foreground">還沒有留言 — 第一個說點什麼吧</div>
       ) : (
-        list.map((c) => {
-          const author = authorLookup.get(c.authorId)
-          const name = author?.displayName ?? "Unknown"
-          const accent = author?.accentColor
-          return (
-            <div key={c.id} className="flex gap-2">
-              <Avatar
-                className="h-7 w-7 mt-0.5"
-                style={accent ? { boxShadow: `0 0 0 1.5px ${accent}` } : undefined}
+        <AnimatePresence initial={false}>
+          {list.map((c) => {
+            const author = authorLookup.get(c.authorId)
+            const name = author?.displayName ?? "Unknown"
+            const accent = author?.accentColor
+            return (
+              <motion.div
+                key={c.id}
+                layout
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: c.pending ? 0.6 : 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                className="flex gap-2"
               >
-                <AvatarFallback className="bg-gradient-to-br from-zinc-700 to-zinc-900 text-[10px] font-semibold text-zinc-100">
-                  {author?.emoji ?? name.slice(0, 1)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-[12px] font-semibold leading-none">{name}</span>
-                  <span className="text-[10px] text-muted-foreground/80">{formatRelative(c.createdAt)}</span>
+                <Avatar
+                  className="h-7 w-7 mt-0.5"
+                  style={accent ? { boxShadow: `0 0 0 1.5px ${accent}` } : undefined}
+                >
+                  <AvatarFallback className="bg-gradient-to-br from-zinc-700 to-zinc-900 text-[10px] font-semibold text-zinc-100">
+                    {author?.emoji ?? name.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-[12px] font-semibold leading-none">{name}</span>
+                    <span className="text-[10px] text-muted-foreground/80">{formatRelative(c.createdAt)}</span>
+                  </div>
+                  <div className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-snug text-foreground/95">
+                    {c.body}
+                  </div>
                 </div>
-                <div className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-snug text-foreground/95">
-                  {c.body}
-                </div>
-              </div>
-            </div>
-          )
-        })
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
       )}
       {me && (
         <div className="flex items-start gap-2 pt-1">
