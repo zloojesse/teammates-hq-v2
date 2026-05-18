@@ -15,12 +15,14 @@ const SEED = [
 ]
 
 const outDir = join(homedir(), ".openclaw/credentials/teammates-hq-v2/agent-tokens")
-mkdirSync(outDir, { recursive: true })
+try { mkdirSync(outDir, { recursive: true }) } catch {}
 
 async function main() {
   console.log("Seeding agents…")
   for (const a of SEED) {
-    const rawToken = "hq_" + randomBytes(24).toString("hex")
+    const envKey = `AGENT_TOKEN_${a.slug.toUpperCase()}`
+    const fromEnv = process.env[envKey]
+    const rawToken = fromEnv && fromEnv.trim().length >= 16 ? fromEnv.trim() : "hq_" + randomBytes(24).toString("hex")
     const tokenHash = hashToken(rawToken)
     const result = await db.insert(agents).values({
       slug: a.slug,
@@ -34,26 +36,45 @@ async function main() {
       state: "idle",
     }).onConflictDoUpdate({
       target: agents.slug,
-      set: {
-        displayName: a.displayName,
-        emoji: a.emoji,
-        accentColor: a.accentColor,
-        model: a.model,
-        bio: a.bio,
-        capabilities: a.capabilities,
-      },
+      set: fromEnv
+        ? {
+            displayName: a.displayName,
+            emoji: a.emoji,
+            accentColor: a.accentColor,
+            model: a.model,
+            bio: a.bio,
+            capabilities: a.capabilities,
+            tokenHash,
+          }
+        : {
+            displayName: a.displayName,
+            emoji: a.emoji,
+            accentColor: a.accentColor,
+            model: a.model,
+            bio: a.bio,
+            capabilities: a.capabilities,
+          },
     }).returning()
-    const tokenFile = join(outDir, `${a.slug}.json`)
-    if (!existsSync(tokenFile)) {
-      writeFileSync(tokenFile, JSON.stringify({
-        slug: a.slug,
-        agentId: result[0].id,
-        token: rawToken,
-        baseUrl: "http://localhost:3000",
-      }, null, 2), { mode: 0o600 })
-      console.log(`  ✓ ${a.displayName} (${a.slug}) — token saved to ${tokenFile}`)
+    const isWritableHome = !!process.env.HOME && process.env.HOME !== "/"
+    if (!fromEnv && isWritableHome) {
+      const tokenFile = join(outDir, `${a.slug}.json`)
+      try {
+        if (!existsSync(tokenFile)) {
+          writeFileSync(tokenFile, JSON.stringify({
+            slug: a.slug,
+            agentId: result[0].id,
+            token: rawToken,
+            baseUrl: "http://localhost:3000",
+          }, null, 2), { mode: 0o600 })
+          console.log(`  ✓ ${a.displayName} (${a.slug}) — token saved to ${tokenFile}`)
+        } else {
+          console.log(`  → ${a.displayName} (${a.slug}) — token file exists, kept`)
+        }
+      } catch (e) {
+        console.log(`  → ${a.displayName} — could not write token file (${(e as Error).message}); token only in env`)
+      }
     } else {
-      console.log(`  → ${a.displayName} (${a.slug}) — token file exists, kept (delete file to rotate)`)
+      console.log(`  → ${a.displayName} (${a.slug}) — using ${fromEnv ? "AGENT_TOKEN_" + a.slug.toUpperCase() + " from env" : "generated token (not persisted)"}`)
     }
   }
   console.log("Done.")
