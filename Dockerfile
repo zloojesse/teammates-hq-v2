@@ -1,12 +1,10 @@
 # syntax=docker/dockerfile:1.7
-# ---------- deps ----------
 FROM node:22-alpine AS deps
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# ---------- builder ----------
 FROM node:22-alpine AS builder
 RUN corepack enable
 WORKDIR /app
@@ -15,7 +13,6 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
-# ---------- runner ----------
 FROM node:22-alpine AS runner
 RUN corepack enable
 WORKDIR /app
@@ -37,4 +34,6 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 RUN chown -R nextjs:nodejs /app
 USER nextjs
 EXPOSE 3000
-CMD ["pnpm", "start:prod"]
+# Run migrate/seed but DON'T let their failure kill the container —
+# always start next so port binds; surface migrate errors via /api/health later.
+CMD ["sh", "-c", "echo '[boot] migrate…'; pnpm db:migrate 2>&1 || echo '[boot] migrate FAILED (continuing)'; echo '[boot] seed…'; pnpm db:seed 2>&1 || echo '[boot] seed FAILED (continuing)'; echo '[boot] next start…'; exec node node_modules/next/dist/bin/next start -p ${PORT:-3000} -H 0.0.0.0"]
