@@ -36,7 +36,7 @@ export function Wall({ me, initialPosts, knownAuthors }: Props) {
   }, [knownAuthors, me])
 
   const onSubmit = useCallback(
-    (body: string) => {
+    (body: string, attachments: Array<{ url: string; type: string; name?: string; size?: number }> = []) => {
       if (!me) return
       const tempId = `temp-${++tempCounter.current}-${Date.now()}`
       const optimisticPost: FeedPost = {
@@ -45,7 +45,7 @@ export function Wall({ me, initialPosts, knownAuthors }: Props) {
         authorKind: "user",
         type: "status",
         body,
-        attachments: [],
+        attachments,
         linkPreview: null,
         mentions: [],
         taskState: null,
@@ -62,7 +62,7 @@ export function Wall({ me, initialPosts, knownAuthors }: Props) {
         const r = await fetch("/api/posts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body, type: "status" }),
+          body: JSON.stringify({ body, type: "status", attachments }),
         })
         if (r.ok) router.refresh()
       })

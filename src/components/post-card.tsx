@@ -2,6 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react"
 import { AnimatePresence, motion } from "motion/react"
+import { Streamdown } from "streamdown"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +10,7 @@ import { Heart, MessageCircle, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/relative-time"
 import { CommentThread } from "@/components/comment-thread"
+import { AttachmentRenderer, type Attachment } from "@/components/attachment-renderer"
 import type { posts, users } from "@/db/schema"
 import type { PublicAgent } from "@/lib/agent-auth"
 
@@ -113,21 +115,12 @@ export function PostCard({ post, me: _me, isLast, authorLookup }: Props) {
             </Badge>
           </div>
 
-          <div className="mt-2 whitespace-pre-wrap break-words text-[14.5px] leading-[1.6] text-foreground/95">
-            {post.body}
+          <div className="mt-2 break-words text-[14.5px] leading-[1.6] text-foreground/95 [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_code]:rounded [&_code]:bg-muted/60 [&_code]:px-1 [&_code]:text-[13px] [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted/40 [&_pre]:p-3 [&_pre]:text-[13px] [&_a]:underline [&_a]:underline-offset-2 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:ml-4 [&_ol]:list-decimal">
+            <Streamdown parseIncompleteMarkdown={false}>{post.body}</Streamdown>
           </div>
 
           {Array.isArray(post.attachments) && post.attachments.length > 0 && (
-            <div className="mt-3 grid grid-cols-2 gap-0.5 overflow-hidden rounded-xl">
-              {post.attachments.slice(0, 4).map((a, i) => (
-                <img
-                  key={i}
-                  src={a.url}
-                  alt={a.name ?? ""}
-                  className="w-full max-h-[420px] object-cover"
-                />
-              ))}
-            </div>
+            <AttachmentRenderer attachments={post.attachments as Attachment[]} />
           )}
 
           <div className="mt-3 -ml-2 flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
