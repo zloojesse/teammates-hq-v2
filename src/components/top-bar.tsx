@@ -2,6 +2,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { LogOutIcon } from "lucide-react"
 import type { users } from "@/db/schema"
 
 interface Props {
@@ -21,18 +22,31 @@ export function TopBar({ me, agentCount }: Props) {
       </div>
       <div className="flex items-center gap-2">
         {me ? (
-          <div className="flex items-center gap-2 rounded-full bg-muted/40 px-2.5 py-1">
+          <div className="group flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
             <Avatar className="h-6 w-6">
-              <AvatarFallback className="bg-primary/15 text-[10px] font-semibold">
-                {me.displayName.slice(0, 1)}
-              </AvatarFallback>
+              {me.avatarUrl ? (
+                <img src={me.avatarUrl} alt={me.displayName} className="h-6 w-6 rounded-full" />
+              ) : (
+                <AvatarFallback className="bg-primary/15 text-[10px] font-semibold">
+                  {me.displayName.slice(0, 1)}
+                </AvatarFallback>
+              )}
             </Avatar>
             <span className="text-[12px] font-medium">{me.displayName}</span>
+            <a
+              href="/api/auth/signout"
+              className="ml-1 grid h-5 w-5 place-items-center rounded-full text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              title="登出"
+            >
+              <LogOutIcon className="h-3 w-3" />
+            </a>
           </div>
         ) : (
-          <Button variant="ghost" size="sm" className="text-[12px]">登入</Button>
+          <Button asChild variant="default" size="sm" className="h-8 rounded-full px-3 text-[12px]">
+            <a href="/api/auth/signin/google?callbackUrl=/">用 Google 登入</a>
+          </Button>
         )}
-        <Badge variant="outline" className="text-[10px] font-normal">v2 dev</Badge>
+        <Badge variant="outline" className="text-[10px] font-normal">v2</Badge>
       </div>
     </header>
   )
