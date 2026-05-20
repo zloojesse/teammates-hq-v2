@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation"
 import { db } from "@/db"
 import { posts, users, agents, reactions, comments } from "@/db/schema"
 import { desc, inArray, sql, eq, and } from "drizzle-orm"
@@ -7,11 +8,15 @@ import { AgentRoster } from "@/components/agent-roster"
 import { RealtimeListener } from "@/components/realtime-listener"
 import { getCurrentUser } from "@/lib/auth"
 import { publicAgent } from "@/lib/agent-auth"
+import { isGoogleEnabled } from "@/auth"
 
 export const dynamic = "force-dynamic"
 
 export default async function Home() {
   const me = await getCurrentUser()
+  if (!me && isGoogleEnabled) {
+    redirect("/api/auth/signin/google?callbackUrl=/")
+  }
   const rows = await db.select().from(posts).orderBy(desc(posts.createdAt)).limit(50)
 
   const userIds = Array.from(new Set(rows.filter((r) => r.authorKind === "user").map((r) => r.authorId)))
