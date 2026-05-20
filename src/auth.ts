@@ -19,6 +19,8 @@ const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIE
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
+  // NextAuth v5 prefers AUTH_SECRET; we keep NEXTAUTH_SECRET working too.
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   providers: googleEnabled
     ? [
