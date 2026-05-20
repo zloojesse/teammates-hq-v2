@@ -24,7 +24,7 @@ export async function getCurrentUser() {
   // Try NextAuth first (lazy import to avoid circular dep at module load)
   try {
     const { auth, isGoogleEnabled } = await import("@/auth")
-    if (isGoogleEnabled) {
+    if (isGoogleEnabled()) {
       const session = await auth()
       const email = session?.user?.email
       if (email && isAllowedEmail(email)) {

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic"
 
 export default async function Home() {
   const me = await getCurrentUser()
-  if (!me && isGoogleEnabled) {
+  if (!me && isGoogleEnabled()) {
     redirect("/api/auth/signin/google?callbackUrl=/")
   }
   const rows = await db.select().from(posts).orderBy(desc(posts.createdAt)).limit(50)

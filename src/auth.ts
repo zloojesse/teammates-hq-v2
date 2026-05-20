@@ -1,35 +1,33 @@
 /**
  * NextAuth v5 config — Google OAuth for the single admin (zloojesse@gmail.com).
  *
- * Conditional: Google provider only registers when GOOGLE_CLIENT_ID is set.
- * Otherwise NextAuth has no providers and `auth()` returns null → callers fall back to dev shim.
- *
- * We DO NOT use the Drizzle adapter — schema doesn't match NextAuth's user table.
- * Instead, we upsert into our `users` table inside the signIn callback and stash
- * our internal id on the session via the `jwt` strategy.
+ * We use the function-form `NextAuth((req) => config)` so every read of
+ * process.env happens at REQUEST time, not at build time. Zeabur injects
+ * env vars at container runtime — if we evaluated the config at module load
+ * (or worse, at `next build`), GOOGLE_CLIENT_ID would be undefined and
+ * NextAuth would emit a `?error=Configuration`.
  */
-import NextAuth, { type NextAuthConfig } from "next-auth"
+import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
 import { db } from "@/db"
 import { users } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { isAllowedEmail } from "@/lib/auth"
 
-const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+export function isGoogleEnabled(): boolean {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+}
 
-export const authConfig: NextAuthConfig = {
+export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   trustHost: true,
-  // NextAuth v5 prefers AUTH_SECRET; we keep NEXTAUTH_SECRET working too.
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
-  providers: googleEnabled
-    ? [
-        Google({
-          clientId: process.env.GOOGLE_CLIENT_ID!,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        }),
-      ]
-    : [],
+  providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+  ],
   callbacks: {
     async signIn({ user }) {
       const email = user.email
@@ -61,7 +59,4 @@ export const authConfig: NextAuthConfig = {
       return session
     },
   },
-}
-
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig)
-export const isGoogleEnabled = googleEnabled
+}))
